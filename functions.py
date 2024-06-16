@@ -12,10 +12,6 @@ import pmdarima as pm
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-#import tensorflow
-#import keras
-#from keras.models import Sequential
-#from keras.layers import LSTM, Dense
 
 def preprocess_dataframe(df):
     """
@@ -400,7 +396,7 @@ def sarimax_forecast(df, dataset_name):
         raise ValueError("Train or test DataFrame is empty after preprocessing.")
 
     # Select exogenous features, excluding 'Price' and 'Date'
-    exogenous_features = train_df.columns.difference(['Price', 'Date']).tolist()
+    exogenous_features = train_df.columns.difference(['Price', 'Date', 'Year', 'Month']).tolist()
 
     # Use auto_arima to find the optimal parameters
     auto_model = auto_arima(train_df['Price'], 
@@ -420,10 +416,21 @@ def sarimax_forecast(df, dataset_name):
                             exog=train_df[exogenous_features])
     sarimax_model_fit = sarimax_model.fit()
 
-    # Forecast the future values for the length of the test set
-    forecast_sarimax = sarimax_model_fit.get_forecast(steps=len(test_df), 
-                                                      exog=test_df[exogenous_features])
-    forecast_mean_sarimax = forecast_sarimax.predicted_mean
+    # Dynamic prediction
+    predictions = []
+    history = train_df['Price'].tolist()
+    exog_history = train_df[exogenous_features].values.tolist()
+
+    for t in range(len(test_df)):
+        model = SARIMAX(history, order=order, seasonal_order=seasonal_order, exog=exog_history)
+        model_fit = model.fit(disp=False)
+        yhat = model_fit.predict(start=len(history), end=len(history), exog=[test_df[exogenous_features].iloc[t]], dynamic=True)
+        predictions.append(yhat[0])
+        history.append(test_df['Price'].iloc[t])
+        exog_history.append(test_df[exogenous_features].iloc[t].tolist())
+
+    # Convert the predictions to a DataFrame
+    forecast_mean_sarimax = pd.DataFrame(predictions, index=test_df.index, columns=['Forecast'])
     
     # Plot the forecast
     plt.figure(figsize=(12, 6))
@@ -532,95 +539,6 @@ def prophet_forecast(df, dataset_name):
     print(f'MAPE: {mape * 100}%')
 
     return rmse, mape
-
-#LSTM
-#def lstm_forecast(train_df, test_df, dataset_name, seq_length=60):
-#    # Ensure 'Date' column is datetime and set as index
-#    train_df['Date'] = pd.to_datetime(train_df['Date'])
-#    train_df.set_index('Date', inplace=True)
-    
-#    test_df['Date'] = pd.to_datetime(test_df['Date'])
-#    test_df.set_index('Date', inplace=True)
-
-    # Combine train and test to fit scaler
-#    combined_df = pd.concat([train_df, test_df])
-    
-    # Scale data
-#    scaler = MinMaxScaler(feature_range=(0, 1))
-#    scaled_data = scaler.fit_transform(combined_df[['Price']])
-    
-    # Split back into train and test
-#    train_size = len(train_df)
-#    scaled_train = scaled_data[:train_size]
-#    scaled_test = scaled_data[train_size:]
-    
-    # Create sequences
-#    def create_sequences(data, seq_length):
-#        X, y = [], []
-#        for i in range(len(data) - seq_length):
-#            X.append(data[i:i + seq_length])
-#            y.append(data[i + seq_length])
-#        return np.array(X), np.array(y)
-    
-#    X_train, y_train = create_sequences(scaled_train, seq_length)
-#    X_test, y_test = create_sequences(scaled_test, seq_length)
-
-    # Build model
-#    model = Sequential()
-#    model.add(LSTM(50, return_sequences=True, input_shape=(seq_length, 1)))
-#    model.add(LSTM(50, return_sequences=False))
-#    model.add(Dense(25))
-#    model.add(Dense(1))
-#    model.compile(optimizer='adam', loss='mean_squared_error')
-
-    # Train model
-#    model.fit(X_train, y_train, batch_size=1, epochs=50)
-
-    # Make predictions
-#    predictions = model.predict(X_test)
-#    predictions = scaler.inverse_transform(predictions)
-
-    # Inverse transform y_test
-#    y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
-
-    # Plot results
-#    plt.figure(figsize=(12, 6))
-#    plt.plot(test_df.index[seq_length:], y_test, label='Actual Price')
-#    plt.plot(test_df.index[seq_length:], predictions, label='Predicted Price', linestyle='--', color='red')
-#    
-    # Calculate Bollinger Bands for train_df
-#    train_df['RollingMean'] = train_df['Price'].rolling(window=20).mean()
-#    train_df['RollingStd'] = train_df['Price'].rolling(window=20).std()
-#    train_df['UpperBand'] = train_df['RollingMean'] + 2 * train_df['RollingStd']
-#    train_df['LowerBand'] = train_df['RollingMean'] - 2 * train_df['RollingStd']
-
-#    plt.plot(train_df.index, train_df['RollingMean'], label='Rolling Mean', color='green', linestyle='--')
-#    plt.plot(train_df.index, train_df['UpperBand'], label='Upper Bollinger Band', color='orange', linestyle='--')
-#    plt.plot(train_df.index, train_df['LowerBand'], label='Lower Bollinger Band', color='orange', linestyle='--')
-    
-    # Calculate Bollinger Bands for test_df
-#    test_df['RollingMean'] = test_df['Price'].rolling(window=20).mean()
-#    test_df['RollingStd'] = test_df['Price'].rolling(window=20).std()
-#    test_df['UpperBand'] = test_df['RollingMean'] + 2 * test_df['RollingStd']
-#    test_df['LowerBand'] = test_df['RollingMean'] - 2 * test_df['RollingStd']
-
-#    plt.plot(test_df.index, test_df['RollingMean'], label='Rolling Mean (Test)', color='blue', linestyle='--')
-#    plt.plot(test_df.index, test_df['UpperBand'], label='Upper Bollinger Band (Test)', color='purple', linestyle='--')
-#    plt.plot(test_df.index, test_df['LowerBand'], label='Lower Bollinger Band (Test)', color='purple', linestyle='--')
-
-#    plt.xlabel('Date')
-#    plt.ylabel('Price')
-#    plt.title(f'LSTM Forecast vs Actual - {dataset_name}')
-#    plt.legend()
-#    plt.show()
-
-    # Calculate metrics
-#    rmse = np.sqrt(mean_squared_error(y_test, predictions))
-#    mape = mean_absolute_percentage_error(y_test, predictions)
-#    print(f'RMSE: {rmse}')
-#    print(f'MAPE: {mape * 100}%')
-
-#    return rmse, mape
 
 ## Weekly data
 import pandas as pd
@@ -834,11 +752,22 @@ def sarimax_forecast_monthly(df, dataset_name):
                             exog=train_df[exogenous_features])
     sarimax_model_fit = sarimax_model.fit()
 
-    # Forecast the future values for the length of the test set
-    forecast_sarimax = sarimax_model_fit.get_forecast(steps=len(test_df), 
-                                                      exog=test_df[exogenous_features])
-    forecast_mean_sarimax = forecast_sarimax.predicted_mean
+    # Dynamic prediction
+    predictions = []
+    history = train_df['Price'].tolist()
+    exog_history = train_df[exogenous_features].values.tolist()
+
+    for t in range(len(test_df)):
+        model = SARIMAX(history, order=order, seasonal_order=seasonal_order, exog=exog_history)
+        model_fit = model.fit(disp=False)
+        yhat = model_fit.predict(start=len(history), end=len(history), exog=[test_df[exogenous_features].iloc[t]], dynamic=True)
+        predictions.append(yhat[0])
+        history.append(test_df['Price'].iloc[t])
+        exog_history.append(test_df[exogenous_features].iloc[t].tolist())
     
+    # Convert the predictions to a DataFrame
+    forecast_mean_sarimax = pd.DataFrame(predictions, index=test_df.index, columns=['Forecast'])
+
     # Plot the forecast
     plt.figure(figsize=(12, 6))
     plt.plot(train_df.index, train_df['Price'], label='Train Price')
@@ -960,9 +889,6 @@ def sarimax_recommend(df, dataset_name):
     float: RMSE (Root Mean Squared Error) of the forecast.
     float: MAPE (Mean Absolute Percentage Error) of the forecast.
     """
-    # Set 'Date' as the index
-    #df.set_index('Date', inplace=True)
-    
     train_df = df[df['Year'] == 2020]
     test_df = df[df['Year'] == 2021]
 
@@ -1001,11 +927,22 @@ def sarimax_recommend(df, dataset_name):
                             exog=train_df[exogenous_features])
     sarimax_model_fit = sarimax_model.fit()
 
-    # Forecast the future values for the length of the test set
-    forecast_sarimax = sarimax_model_fit.get_forecast(steps=len(test_df), 
-                                                      exog=test_df[exogenous_features])
-    forecast_mean_sarimax = forecast_sarimax.predicted_mean
-    
+    # Dynamic prediction
+    predictions = []
+    history = train_df['Price'].tolist()
+    exog_history = train_df[exogenous_features].values.tolist()
+
+    for t in range(len(test_df)):
+        model = SARIMAX(history, order=order, seasonal_order=seasonal_order, exog=exog_history)
+        model_fit = model.fit(disp=False)
+        yhat = model_fit.predict(start=len(history), end=len(history), exog=[test_df[exogenous_features].iloc[t]], dynamic=True)
+        predictions.append(yhat[0])
+        history.append(test_df['Price'].iloc[t])
+        exog_history.append(test_df[exogenous_features].iloc[t].tolist())
+
+    # Convert the predictions to a DataFrame
+    forecast_mean_sarimax = pd.DataFrame(predictions, index=test_df.index, columns=['Forecast'])
+
     # Calculate Bollinger Bands for the combined dataset
     df['20_SMA'] = df['Price'].rolling(window=20).mean()
     df['20_STD'] = df['Price'].rolling(window=20).std()
@@ -1015,9 +952,9 @@ def sarimax_recommend(df, dataset_name):
     # Generate recommendations
     recommendations = []
     for i in range(len(test_df)):
-        if forecast_mean_sarimax.iloc[i] >= df['Upper_Band'].iloc[i + len(train_df)]:
+        if forecast_mean_sarimax.iloc[i]['Forecast'] >= df['Upper_Band'].iloc[i + len(train_df)]:
             recommendations.append('Sell')
-        elif forecast_mean_sarimax.iloc[i] <= df['Lower_Band'].iloc[i + len(train_df)]:
+        elif forecast_mean_sarimax.iloc[i]['Forecast'] <= df['Lower_Band'].iloc[i + len(train_df)]:
             recommendations.append('Buy')
         else:
             recommendations.append('Hold')
@@ -1033,6 +970,7 @@ def sarimax_recommend(df, dataset_name):
     plt.plot(test_df.index, test_df['Forecast'], label='SARIMAX Forecasted Price', linestyle='--', color='purple')
 
     # Plot Bollinger Bands for the test set
+    #plt.plot(test_df.index, df['20_SMA'], label='20 SMA', color='orange')
     plt.fill_between(test_df.index, test_df['Upper_Band'], test_df['Lower_Band'], color='blue', alpha=0.1)
 
     # Plot buy and sell signals
@@ -1127,6 +1065,7 @@ def lr_recommend(data, dataset_name, leads=[1]):
     plt.plot(test.index, test['Forecast'], label='Linear Regression Forecasted Price', linestyle='--', color='purple')
 
     # Plot Bollinger Bands for the test set
+    #plt.plot(test.index, df['20_SMA'], label='20 SMA', color='orange')
     plt.fill_between(test.index, test['Upper_Band'], test['Lower_Band'], color='blue', alpha=0.1)
 
     # Plot buy and sell signals
@@ -1139,81 +1078,5 @@ def lr_recommend(data, dataset_name, leads=[1]):
     plt.xlabel('Date')
     plt.ylabel('Price')
     plt.title(f'Linear Regression - Buy & Sell Signals - {dataset_name}')
-    plt.legend()
-    plt.show()
-
-## Prophet recommendation function
-def prophet_recommend(df, dataset_name):
-    train_df = df[df['Year'] == 2020]
-    test_df = df[df['Year'] == 2021]
-
-    # Prepare the data for Prophet
-    prophet_train = train_df.rename(columns={'Date': 'ds', 'Price': 'y'})
-    prophet_test = test_df.rename(columns={'Date': 'ds', 'Price': 'y'})
-
-    # Initialize the Prophet model
-    model = Prophet()
-
-    exogenous_vars = ['Open', 'High', 'Low', 'Volume (M)', 'Change %']
-
-    # Add additional regressors
-    for var in exogenous_vars:
-        model.add_regressor(var)
-
-    # Fit the model
-    model.fit(prophet_train[['ds', 'y'] + exogenous_vars])
-
-    # Prepare the test data for prediction
-    future = prophet_test[['ds'] + exogenous_vars]
-
-    # Make predictions
-    forecast = model.predict(future)
-
-    # Plot the results
-    plt.figure(figsize=(12, 6))
-    plt.plot(prophet_train['ds'], prophet_train['y'], label='Train Price')
-    plt.plot(prophet_test['ds'], prophet_test['y'], label='Test Price')
-    plt.plot(prophet_test['ds'], forecast['yhat'], label='Prophet Forecasted Price', linestyle='--', color='purple')
-
-    # Calculate Bollinger Bands for the combined dataset
-    df['ds'] = df['Date']
-    df['y'] = df['Price']
-    df['20_SMA'] = df['y'].rolling(window=20).mean()
-    df['20_STD'] = df['y'].rolling(window=20).std()
-    df['Upper_Band'] = df['20_SMA'] + (df['20_STD'] * 2)
-    df['Lower_Band'] = df['20_SMA'] - (df['20_STD'] * 2)
-
-    # Plot Bollinger Bands for train and test sets
-    plt.fill_between(df['ds'], df['Upper_Band'], df['Lower_Band'], color='blue', alpha=0.1)
-    
-    # Generate recommendations for the forecasted values
-    recommendations = []
-    for i in range(len(test_df)):
-        if forecast['yhat'].iloc[i] >= df['Upper_Band'].iloc[i + len(train_df)]:
-            recommendations.append('Sell')
-        elif forecast['yhat'].iloc[i] <= df['Lower_Band'].iloc[i + len(train_df)]:
-            recommendations.append('Buy')
-        else:
-            recommendations.append('Hold')
-
-    test_df['Forecast'] = forecast['yhat'].values
-    test_df['Recommendation'] = recommendations
-    test_df['Upper_Band'] = df['Upper_Band'].loc[test_df.index]
-    test_df['Lower_Band'] = df['Lower_Band'].loc[test_df.index]
-
-    # Plot buy and sell signals
-    buy_signals = test_df[test_df['Recommendation'] == 'Buy']
-    sell_signals = test_df[test_df['Recommendation'] == 'Sell']
-
-    # Adjust the index by len(train_df)
-    buy_signals.index = buy_signals.index + len(train_df)
-    sell_signals.index = sell_signals.index + len(train_df)
-    
-    plt.scatter(buy_signals.index, buy_signals['Forecast'], marker='^', color='green', label='Buy Signal', s=50)
-    plt.scatter(sell_signals.index, sell_signals['Forecast'], marker='v', color='red', label='Sell Signal', s=50)
-
-    plt.xlabel('Date')
-    plt.ylabel('Price')
-    plt.title(f'Prophet - Buy & Sell Signals - {dataset_name}')
     plt.legend()
     plt.show()

@@ -237,9 +237,34 @@ def linear_regression_forecast(data, dataset_name):
     # Train the Linear Regression model
     model = LinearRegression().fit(train[x_cols].values, train[y_cols])
 
-    # Make predictions on the test data
-    test_predictions = model.predict(test[x_cols].values)
-    test_predictions_df = pd.DataFrame(test_predictions, index=test.index, columns=y_cols)
+    # Initialize a DataFrame to store the test predictions
+    test_predictions_df = pd.DataFrame(index=test.index, columns=y_cols)
+
+    # Iteratively predict one day at a time
+    for date in test.index:
+        if test.loc[date, x_cols].isna().any():
+            # Use last n_lags rows from the train set to initialize the first prediction
+            lagged_features = train[x_cols].iloc[-1].values.reshape(1, -1)
+        else:
+            lagged_features = test.loc[date, x_cols].values.reshape(1, -1)
+
+        # Predict the next day's prices
+        predicted_values = model.predict(lagged_features)[0]
+
+        # Store the predictions
+        test_predictions_df.loc[date] = predicted_values
+
+        # Update the lagged features in the test set
+        for lag in range(n_lags, 0, -1):
+            if lag == 1:
+                if (date + pd.Timedelta(days=1)) in test.index:
+                    test.loc[date + pd.Timedelta(days=1), f'lag_{lag}'] = predicted_values[0]
+            else:
+                test[f'lag_{lag}'] = test[f'lag_{lag-1}'].shift(-1)
+
+        # Update the test set's lag_0 value with the predicted value
+        if (date + pd.Timedelta(days=1)) in test.index:
+            test.loc[date + pd.Timedelta(days=1), 'lag_0'] = predicted_values[0]
 
     # Calculate Bollinger Bands for train and test sets
     df['20_SMA'] = df['lag_0'].rolling(window=20).mean()
@@ -272,6 +297,9 @@ def linear_regression_forecast(data, dataset_name):
         print(f'Root Mean Squared Error: {rmse}')
         print(f'Mean Absolute Percentage Error: {mape * 100}%')
         print('')
+
+    return test_predictions_df
+
 
 #ARIMA
 # Convert 'Date' column to datetime if it isn't already
@@ -889,6 +917,13 @@ def sarimax_recommend(df, dataset_name):
     float: RMSE (Root Mean Squared Error) of the forecast.
     float: MAPE (Mean Absolute Percentage Error) of the forecast.
     """
+    # Ensure 'Date' is in datetime format and set it as the index
+    df['Date'] = pd.to_datetime(df['Date'])
+    df.set_index('Date', inplace=True)
+    
+    # Create 'Year' column
+    df['Year'] = df.index.year
+    
     train_df = df[df['Year'] == 2020]
     test_df = df[df['Year'] == 2021]
 
@@ -963,6 +998,7 @@ def sarimax_recommend(df, dataset_name):
     test_df['Recommendation'] = recommendations
     test_df['Upper_Band'] = df['Upper_Band'].loc[test_df.index]
     test_df['Lower_Band'] = df['Lower_Band'].loc[test_df.index]
+    test_df['20_SMA'] = df['20_SMA'].loc[test_df.index]
 
     # Plot the results for the test set (year 2021) only
     plt.figure(figsize=(12, 6))
@@ -970,8 +1006,10 @@ def sarimax_recommend(df, dataset_name):
     plt.plot(test_df.index, test_df['Forecast'], label='SARIMAX Forecasted Price', linestyle='--', color='purple')
 
     # Plot Bollinger Bands for the test set
-    #plt.plot(test_df.index, df['20_SMA'], label='20 SMA', color='orange')
     plt.fill_between(test_df.index, test_df['Upper_Band'], test_df['Lower_Band'], color='blue', alpha=0.1)
+    
+    # Plot the 20-day SMA for the test set
+    plt.plot(test_df.index, test_df['20_SMA'], label='20 SMA', color='orange')
 
     # Plot buy and sell signals
     buy_signals = test_df[test_df['Recommendation'] == 'Buy']
@@ -1034,9 +1072,34 @@ def lr_recommend(data, dataset_name, leads=[1]):
     # Train the Linear Regression model
     model = LinearRegression().fit(train[x_cols].values, train[y_cols])
 
-    # Make predictions on the test data
-    test_predictions = model.predict(test[x_cols].values)
-    test_predictions_df = pd.DataFrame(test_predictions, index=test.index, columns=y_cols)
+    # Initialize a DataFrame to store the test predictions
+    test_predictions_df = pd.DataFrame(index=test.index, columns=y_cols)
+
+    # Iteratively predict one day at a time
+    for date in test.index:
+        if test.loc[date, x_cols].isna().any():
+            # Use last n_lags rows from the train set to initialize the first prediction
+            lagged_features = train[x_cols].iloc[-1].values.reshape(1, -1)
+        else:
+            lagged_features = test.loc[date, x_cols].values.reshape(1, -1)
+
+        # Predict the next day's prices
+        predicted_values = model.predict(lagged_features)[0]
+
+        # Store the predictions
+        test_predictions_df.loc[date] = predicted_values
+
+        # Update the lagged features in the test set
+        for lag in range(n_lags, 0, -1):
+            if lag == 1:
+                if (date + pd.Timedelta(days=1)) in test.index:
+                    test.loc[date + pd.Timedelta(days=1), f'lag_{lag}'] = predicted_values[0]
+            else:
+                test[f'lag_{lag}'] = test[f'lag_{lag-1}'].shift(-1)
+
+        # Update the test set's lag_0 value with the predicted value
+        if (date + pd.Timedelta(days=1)) in test.index:
+            test.loc[date + pd.Timedelta(days=1), 'lag_0'] = predicted_values[0]
 
     # Calculate Bollinger Bands for train and test sets
     df['20_SMA'] = df['lag_0'].rolling(window=20).mean()
@@ -1065,7 +1128,6 @@ def lr_recommend(data, dataset_name, leads=[1]):
     plt.plot(test.index, test['Forecast'], label='Linear Regression Forecasted Price', linestyle='--', color='purple')
 
     # Plot Bollinger Bands for the test set
-    #plt.plot(test.index, df['20_SMA'], label='20 SMA', color='orange')
     plt.fill_between(test.index, test['Upper_Band'], test['Lower_Band'], color='blue', alpha=0.1)
 
     # Plot buy and sell signals

@@ -981,24 +981,55 @@ def sarimax_recommend(df, dataset_name):
     # Calculate Bollinger Bands for the combined dataset
     df['20_SMA'] = df['Price'].rolling(window=20).mean()
     df['20_STD'] = df['Price'].rolling(window=20).std()
-    df['Upper_Band'] = df['20_SMA'] + (df['20_STD'] * 2)
-    df['Lower_Band'] = df['20_SMA'] - (df['20_STD'] * 2)
+    df['Upper_Band'] = df['20_SMA'] + df['20_STD']
+    df['Lower_Band'] = df['20_SMA'] - df['20_STD']
 
-    # Generate recommendations
+    # Generate recommendations based on alternation between "Buy" and "Sell"
+    in_position = False
     recommendations = []
+    capital = 10000
+    shares = 0
+    trade_dates = []
+    buy_prices = []
+    sell_prices = []
+    account_balance = []
+    num_trades = 0
+
     for i in range(len(test_df)):
-        if forecast_mean_sarimax.iloc[i]['Forecast'] >= df['Upper_Band'].iloc[i + len(train_df)]:
-            recommendations.append('Sell')
-        elif forecast_mean_sarimax.iloc[i]['Forecast'] <= df['Lower_Band'].iloc[i + len(train_df)]:
+        if not in_position and forecast_mean_sarimax.iloc[i]['Forecast'] <= df['Lower_Band'].iloc[i + len(train_df)]:
             recommendations.append('Buy')
+            shares = capital / test_df['Price'].iloc[i]
+            trade_dates.append(test_df.index[i])
+            buy_prices.append(test_df['Price'].iloc[i])
+            account_balance.append(capital)
+            in_position = True
+        elif in_position and forecast_mean_sarimax.iloc[i]['Forecast'] >= df['20_SMA'].iloc[i + len(train_df)]:
+            recommendations.append('Sell')
+            capital = shares * test_df['Price'].iloc[i]
+            trade_dates.append(test_df.index[i])
+            sell_prices.append(test_df['Price'].iloc[i])
+            account_balance.append(capital)
+            shares = 0
+            num_trades += 1
+            in_position = False
         else:
             recommendations.append('Hold')
+            account_balance.append(capital)
 
     test_df['Forecast'] = forecast_mean_sarimax
     test_df['Recommendation'] = recommendations
     test_df['Upper_Band'] = df['Upper_Band'].loc[test_df.index]
     test_df['Lower_Band'] = df['Lower_Band'].loc[test_df.index]
     test_df['20_SMA'] = df['20_SMA'].loc[test_df.index]
+
+    # Calculate hold times
+    # zip pairs each buy date with the corresponding sell date
+    hold_times = [(sell_date - buy_date).days for buy_date, sell_date in zip(trade_dates[::2], trade_dates[1::2])]
+    avg_hold_time = sum(hold_times) / len(hold_times) if hold_times else 0
+
+    # Calculate average return
+    returns = [(sell_price - buy_price) / buy_price for buy_price, sell_price in zip(buy_prices, sell_prices)]
+    avg_return = (sum(returns) / num_trades * 100) if num_trades > 0 else 0
 
     # Plot the results for the test set (year 2021) only
     plt.figure(figsize=(12, 6))
@@ -1015,14 +1046,29 @@ def sarimax_recommend(df, dataset_name):
     buy_signals = test_df[test_df['Recommendation'] == 'Buy']
     sell_signals = test_df[test_df['Recommendation'] == 'Sell']
     
-    plt.scatter(buy_signals.index, buy_signals['Forecast'], marker='^', color='green', label='Buy Signal', s=50)
-    plt.scatter(sell_signals.index, sell_signals['Forecast'], marker='v', color='red', label='Sell Signal', s=50)
+    plt.scatter(buy_signals.index, buy_signals['Forecast'], marker='^', color='green', label='Buy Signal', s=70)
+    plt.scatter(sell_signals.index, sell_signals['Forecast'], marker='v', color='red', label='Sell Signal', s=70)
 
     plt.xlabel('Date')
     plt.ylabel('Price')
     plt.title(f'SARIMAX - Buy & Sell Signals - {dataset_name}')
     plt.legend()
     plt.show()
+
+    # Plot account balance over time
+    plt.figure(figsize=(12, 6))
+    plt.plot(test_df.index, account_balance, label='Account Balance', color='blue')
+    plt.xlabel('Date')
+    plt.ylabel('Account Balance ($)')
+    plt.title(f'Account Balance Over Time - {dataset_name}')
+    plt.legend()
+    plt.show()
+
+    # Print summary statistics
+    print(f"Number of trades: {num_trades}")
+    print(f"Average hold time: {avg_hold_time:.2f} days")
+    print(f"Average return per trade: {avg_return:.2f}%")
+    print(f"Final account balance: ${capital:.2f}")
 
     return test_df
 

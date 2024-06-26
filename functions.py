@@ -12,6 +12,8 @@ import pmdarima as pm
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import warnings
+warnings.filterwarnings('ignore')
 
 def preprocess_dataframe(df):
     """
@@ -298,7 +300,7 @@ def linear_regression_forecast(data, dataset_name):
         print(f'Mean Absolute Percentage Error: {mape * 100}%')
         print('')
 
-    return test_predictions_df
+    #return test_predictions_df
 
 
 #ARIMA
@@ -400,6 +402,9 @@ def sarimax_forecast(df, dataset_name):
     float: RMSE (Root Mean Squared Error) of the forecast.
     float: MAPE (Mean Absolute Percentage Error) of the forecast.
     """
+    # Set the frequency of the DateTime index
+    df = df.asfreq('D')  # Adjust frequency as needed (e.g., 'M' for monthly)
+
     train_df = df[df['Year'] == 2020]
     test_df = df[df['Year'] == 2021]
 
@@ -491,8 +496,6 @@ def sarimax_forecast(df, dataset_name):
     print(f'RMSE: {rmse}')
     print(f'MAPE: {mape * 100}%')
 
-    return rmse, mape
-
 #Prophet
 from prophet import Prophet
 
@@ -565,25 +568,6 @@ def prophet_forecast(df, dataset_name):
 
     print(f'RMSE: {rmse}')
     print(f'MAPE: {mape * 100}%')
-
-    return rmse, mape
-
-## Weekly data
-import pandas as pd
-
-# Sample data
-data = {
-    'Date': ['2021-03-31 00:00:00', '2021-03-30 00:00:00', '2021-03-29 00:00:00', '2021-03-26 00:00:00', '2021-03-25 00:00:00'],
-    'Price': [291.02, 293.25, 293.3, 291.22, 286.66],
-    'Open': [294.0, 294.86, 289.72, 288.63, 286.5],
-    'High': [294.42, 295.72, 294.09, 292.75, 287.03],
-    'Low': [290.26, 291.5, 289.26, 288.32, 283.85],
-    'Vol.': ['47.00M', '38.81M', '43.68M', '56.07M', '35.22M'],
-    'Change %': [-0.0076, -0.0002, 0.0071, 0.0159, 0.003],
-}
-
-# Create a DataFrame
-df = pd.DataFrame(data)
 
 def preprocess_and_resample(data, freq):
     """
@@ -721,7 +705,6 @@ def arima_monthly(df, dataset_name):
     print(f'RMSE: {rmse}')
     print(f'MAPE: {mape * 100}%')
 
-    return rmse, mape
 
 ##SARIMAX
 def sarimax_forecast_monthly(df, dataset_name):
@@ -736,6 +719,13 @@ def sarimax_forecast_monthly(df, dataset_name):
     float: RMSE (Root Mean Squared Error) of the forecast.
     float: MAPE (Mean Absolute Percentage Error) of the forecast.
     """
+    # Ensure 'Date' is in datetime format and set it as the index
+    df['Date'] = pd.to_datetime(df['Date'])
+    df.set_index('Date', inplace=True)
+    
+    # Set the frequency of the DateTime index
+    df = df.asfreq('D')  # Adjust frequency as needed (e.g., 'M' for monthly)
+    
     train_df = df[df['Year'] == 2020]
     test_df = df[df['Year'] == 2021]
 
@@ -827,8 +817,6 @@ def sarimax_forecast_monthly(df, dataset_name):
     print(f'RMSE: {rmse}')
     print(f'MAPE: {mape * 100}%')
 
-    return rmse, mape
-
 #Prophet
 from prophet import Prophet
 
@@ -902,20 +890,20 @@ def prophet_forecast_monthly(df, dataset_name):
     print(f'RMSE: {rmse}')
     print(f'MAPE: {mape * 100}%')
 
-    return rmse, mape
-
 #RECOMMENDATION SYSTEM FOR SARIMAX
 def sarimax_recommend(df, dataset_name):
     """
     Perform SARIMAX modeling, forecasting, and evaluation on the given training and testing DataFrames.
     
     Parameters:
-    train_df (pd.DataFrame): DataFrame containing 'Date', 'Price', and other exogenous features for training.
-    test_df (pd.DataFrame): DataFrame containing 'Date', 'Price', and other exogenous features for testing.
+    df (pd.DataFrame): DataFrame containing 'Date', 'Price', and other exogenous features.
+    dataset_name (str): Name of the dataset for identification.
     
     Returns:
-    float: RMSE (Root Mean Squared Error) of the forecast.
-    float: MAPE (Mean Absolute Percentage Error) of the forecast.
+    test_df (pd.DataFrame): DataFrame containing test data and recommendations.
+    num_trades (int): Number of trades made.
+    final_capital (float): Final account balance after trading.
+    total_profit (float): Total profit earned from trading.
     """
     # Ensure 'Date' is in datetime format and set it as the index
     df['Date'] = pd.to_datetime(df['Date'])
@@ -984,10 +972,12 @@ def sarimax_recommend(df, dataset_name):
     df['Upper_Band'] = df['20_SMA'] + df['20_STD']
     df['Lower_Band'] = df['20_SMA'] - df['20_STD']
 
+    initial_capital = 10000
+
     # Generate recommendations based on alternation between "Buy" and "Sell"
     in_position = False
     recommendations = []
-    capital = 10000
+    capital = initial_capital
     shares = 0
     trade_dates = []
     buy_prices = []
@@ -1064,127 +1054,13 @@ def sarimax_recommend(df, dataset_name):
     plt.legend()
     plt.show()
 
+    # Calculate total profit
+    total_profit = capital - initial_capital
+
     # Print summary statistics
     print(f"Number of trades: {num_trades}")
     print(f"Average hold time: {avg_hold_time:.2f} days")
     print(f"Average return per trade: {avg_return:.2f}%")
     print(f"Final account balance: ${capital:.2f}")
 
-    return test_df
-
-#Linear Regression Recommendation
-def lr_recommend(data, dataset_name, leads=[1]):
-    """
-    Perform linear regression modeling, forecasting, and evaluation on the given dataset.
-
-    Parameters:
-    data (pd.DataFrame): DataFrame containing 'Date' and 'Price' columns.
-    dataset_name (str): Name of the dataset for plotting and reporting.
-
-    Returns:
-    None
-    """
-    # Convert data to DataFrame
-    df = pd.DataFrame(data)
-
-    # Convert 'Date' column to datetime
-    df['Date'] = pd.to_datetime(df['Date'])
-
-    # Set 'Date' as the index
-    df.set_index('Date', inplace=True)
-
-    # Ensure 'Price' is integer
-    df['Price'] = df['Price'].astype(int)
-
-    # Create lagged features
-    n_lags = 5
-    for lag in range(1, n_lags + 1):
-        df[f'lag_{lag}'] = df['Price'].shift(lag)
-
-    # Create lead features
-    for lead in leads:
-        df[f'lead_{lead}'] = df['Price'].shift(-lead)
-
-    df.rename(columns={'Price': 'lag_0'}, inplace=True)
-    df.dropna(inplace=True)
-
-    # Split the data into training and testing sets
-    train = df[df.index.year == 2020].copy()
-    test = df[df.index.year == 2021].copy()
-
-    y_cols = [f'lead_{j}' for j in leads]
-    x_cols = [f'lag_{j}' for j in range(1, n_lags + 1)]
-
-    # Train the Linear Regression model
-    model = LinearRegression().fit(train[x_cols].values, train[y_cols])
-
-    # Initialize a DataFrame to store the test predictions
-    test_predictions_df = pd.DataFrame(index=test.index, columns=y_cols)
-
-    # Iteratively predict one day at a time
-    for date in test.index:
-        if test.loc[date, x_cols].isna().any():
-            # Use last n_lags rows from the train set to initialize the first prediction
-            lagged_features = train[x_cols].iloc[-1].values.reshape(1, -1)
-        else:
-            lagged_features = test.loc[date, x_cols].values.reshape(1, -1)
-
-        # Predict the next day's prices
-        predicted_values = model.predict(lagged_features)[0]
-
-        # Store the predictions
-        test_predictions_df.loc[date] = predicted_values
-
-        # Update the lagged features in the test set
-        for lag in range(n_lags, 0, -1):
-            if lag == 1:
-                if (date + pd.Timedelta(days=1)) in test.index:
-                    test.loc[date + pd.Timedelta(days=1), f'lag_{lag}'] = predicted_values[0]
-            else:
-                test[f'lag_{lag}'] = test[f'lag_{lag-1}'].shift(-1)
-
-        # Update the test set's lag_0 value with the predicted value
-        if (date + pd.Timedelta(days=1)) in test.index:
-            test.loc[date + pd.Timedelta(days=1), 'lag_0'] = predicted_values[0]
-
-    # Calculate Bollinger Bands for train and test sets
-    df['20_SMA'] = df['lag_0'].rolling(window=20).mean()
-    df['20_STD'] = df['lag_0'].rolling(window=20).std()
-    df['Upper_Band'] = df['20_SMA'] + (df['20_STD'] * 2)
-    df['Lower_Band'] = df['20_SMA'] - (df['20_STD'] * 2)
-
-    # Generate recommendations for lead = 1
-    recommendations = []
-    for i in range(len(test)):
-        if test_predictions_df[f'lead_{leads[0]}'].iloc[i] >= df['Upper_Band'].iloc[i + len(train)]:
-            recommendations.append('Sell')
-        elif test_predictions_df[f'lead_{leads[0]}'].iloc[i] <= df['Lower_Band'].iloc[i + len(train)]:
-            recommendations.append('Buy')
-        else:
-            recommendations.append('Hold')
-
-    test['Forecast'] = test_predictions_df[f'lead_{leads[0]}']
-    test['Recommendation'] = recommendations
-    test['Upper_Band'] = df['Upper_Band'].loc[test.index]
-    test['Lower_Band'] = df['Lower_Band'].loc[test.index]
-
-    # Plot the results for the test set (year 2021) only
-    plt.figure(figsize=(12, 6))
-    plt.plot(test.index, test['lag_0'], label='Test Price')
-    plt.plot(test.index, test['Forecast'], label='Linear Regression Forecasted Price', linestyle='--', color='purple')
-
-    # Plot Bollinger Bands for the test set
-    plt.fill_between(test.index, test['Upper_Band'], test['Lower_Band'], color='blue', alpha=0.1)
-
-    # Plot buy and sell signals
-    buy_signals = test[test['Recommendation'] == 'Buy']
-    sell_signals = test[test['Recommendation'] == 'Sell']
-    
-    plt.scatter(buy_signals.index, buy_signals['Forecast'], marker='^', color='green', label='Buy Signal', s=50)
-    plt.scatter(sell_signals.index, sell_signals['Forecast'], marker='v', color='red', label='Sell Signal', s=50)
-
-    plt.xlabel('Date')
-    plt.ylabel('Price')
-    plt.title(f'Linear Regression - Buy & Sell Signals - {dataset_name}')
-    plt.legend()
-    plt.show()
+    return test_df, num_trades, capital, total_profit
